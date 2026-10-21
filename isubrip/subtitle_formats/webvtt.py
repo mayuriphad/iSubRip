@@ -55,17 +55,23 @@ class WebVTTCaptionBlock(SubtitlesCaptionBlock, WebVTTBlock):
         return copy
 
     def to_srt(self) -> SubRipCaptionBlock:
+        # WebVTT escapes some characters as named references (e.g., `&amp;`), while SRT has no such escaping
+        unescaped_payload = WEBVTT_CHARACTER_REFERENCE_REGEX.sub(
+            lambda match: WEBVTT_CHARACTER_REFERENCES[match.group(0)],
+            self.payload,
+        )
+
         # Add a {\an8} tag at the start of the payload if the `line` setting is set to 0%
         if self.subrip_alignment_conversion and WEBVTT_BOTTOM_LINE_ALIGNMENT_REGEX.search(self.settings):
             # If the payload starts with an RTL control char, add the tag after it
-            if self.payload.startswith(RTL_CHAR):
-                payload = RTL_CHAR + WEBVTT_ALIGN_TOP_TAG + self.payload[len(RTL_CHAR):]
+            if unescaped_payload.startswith(RTL_CHAR):
+                payload = RTL_CHAR + WEBVTT_ALIGN_TOP_TAG + unescaped_payload[len(RTL_CHAR):]
 
             else:
-                payload = WEBVTT_ALIGN_TOP_TAG + self.payload
+                payload = WEBVTT_ALIGN_TOP_TAG + unescaped_payload
 
         else:
-            payload = self.payload
+            payload = unescaped_payload
 
         return SubRipCaptionBlock(start_time=self.start_time, end_time=self.end_time, payload=payload)
 
@@ -332,5 +338,14 @@ WEBVTT_CAPTION_SETTINGS_REGEX = ("(?:"
 WEBVTT_CAPTION_BLOCK_REGEX = re.compile(rf"^({WEBVTT_CAPTION_TIMINGS_REGEX})[ \t]*({WEBVTT_CAPTION_SETTINGS_REGEX})?")
 WEBVTT_COMMENT_HEADER_REGEX = re.compile(rf"^{WebVTTCommentBlock.header}(?:$|[ \t])(.+)?")
 WEBVTT_BOTTOM_LINE_ALIGNMENT_REGEX = re.compile(r"line:0+(?:\.0+)?%")
+WEBVTT_CHARACTER_REFERENCES = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&lrm;": "\u200e",
+    "&rlm;": "\u200f",
+    "&nbsp;": "\u00a0",
+}
+WEBVTT_CHARACTER_REFERENCE_REGEX = re.compile("|".join(WEBVTT_CHARACTER_REFERENCES))
 
 WEBVTT_ALIGN_TOP_TAG = r"{\an8}"
